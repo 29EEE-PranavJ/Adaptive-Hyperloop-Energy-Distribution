@@ -137,20 +137,6 @@ Approximate load reduction achieved during deficit conditions:
 | GTKWave | Waveform visualization |
 | EDA Playground | Verilog simulation |
 
----
-
-# Repository Structure
-
-```text
-Hyperloop-AEMS/
-│
-├── README.md
-├── images/
-├── simulink/
-├── verilog/
-├── results/
-└── docs/
-```
 
 ---
 
