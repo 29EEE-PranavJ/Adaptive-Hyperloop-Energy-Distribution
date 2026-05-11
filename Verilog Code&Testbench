@@ -1,0 +1,373 @@
+//==============================================================
+// Adaptive Energy Load Distribution Controller
+//==============================================================
+
+`timescale 1ns/1ps
+
+//==============================================================
+// MAIN DESIGN MODULE
+//==============================================================
+
+module hyperloop_energy_controller(
+
+    input clk,
+    input rst,
+
+    input [15:0] P_available,
+    input [15:0] P_required,
+
+    output reg [15:0] HVAC_cmd,
+    output reg [15:0] Lighting_cmd,
+    output reg [15:0] Comm_cmd,
+    output reg [15:0] Propulsion_cmd
+
+);
+
+//==============================================================
+// STATE DECLARATION
+//==============================================================
+
+parameter NORMAL          = 2'b00;
+parameter MILD_DEFICIT    = 2'b01;
+parameter SEVERE_DEFICIT  = 2'b10;
+parameter EMERGENCY       = 2'b11;
+
+reg [1:0] current_state;
+reg [1:0] next_state;
+
+//==============================================================
+// STATE MEMORY
+//==============================================================
+
+always @(posedge clk or posedge rst)
+begin
+
+    if(rst)
+        current_state <= NORMAL;
+
+    else
+        current_state <= next_state;
+
+end
+
+//==============================================================
+// NEXT STATE LOGIC
+//==============================================================
+
+always @(*)
+begin
+
+    case(current_state)
+
+    //==========================================================
+    // NORMAL STATE
+    //==========================================================
+
+    NORMAL:
+    begin
+
+        if(P_available < ((95 * P_required)/100))
+            next_state = MILD_DEFICIT;
+
+        else
+            next_state = NORMAL;
+
+    end
+
+    //==========================================================
+    // MILD DEFICIT STATE
+    //==========================================================
+
+    MILD_DEFICIT:
+    begin
+
+        if(P_available < ((80 * P_required)/100))
+            next_state = SEVERE_DEFICIT;
+
+        else if(P_available >= P_required)
+            next_state = NORMAL;
+
+        else
+            next_state = MILD_DEFICIT;
+
+    end
+
+    //==========================================================
+    // SEVERE DEFICIT STATE
+    //==========================================================
+
+    SEVERE_DEFICIT:
+    begin
+
+        if(P_available < ((50 * P_required)/100))
+            next_state = EMERGENCY;
+
+        else if(P_available >= ((95 * P_required)/100))
+            next_state = MILD_DEFICIT;
+
+        else
+            next_state = SEVERE_DEFICIT;
+
+    end
+
+    //==========================================================
+    // EMERGENCY STATE
+    //==========================================================
+
+    EMERGENCY:
+    begin
+
+        if(P_available >= ((80 * P_required)/100))
+            next_state = SEVERE_DEFICIT;
+
+        else
+            next_state = EMERGENCY;
+
+    end
+
+    //==========================================================
+
+    default:
+        next_state = NORMAL;
+
+    endcase
+
+end
+
+//==============================================================
+// OUTPUT LOGIC
+//==============================================================
+
+always @(*)
+begin
+
+    case(current_state)
+
+    //==========================================================
+    // NORMAL MODE
+    //==========================================================
+
+    NORMAL:
+    begin
+
+        HVAC_cmd       = 16'd120;
+        Lighting_cmd   = 16'd50;
+        Comm_cmd       = 16'd80;
+        Propulsion_cmd = 16'd850;
+
+    end
+
+    //==========================================================
+    // MILD DEFICIT MODE
+    //==========================================================
+
+    MILD_DEFICIT:
+    begin
+
+        HVAC_cmd       = 16'd60;
+        Lighting_cmd   = 16'd20;
+        Comm_cmd       = 16'd60;
+        Propulsion_cmd = 16'd700;
+
+    end
+
+    //==========================================================
+    // SEVERE DEFICIT MODE
+    //==========================================================
+
+    SEVERE_DEFICIT:
+    begin
+
+        HVAC_cmd       = 16'd20;
+        Lighting_cmd   = 16'd0;
+        Comm_cmd       = 16'd40;
+        Propulsion_cmd = 16'd500;
+
+    end
+
+    //==========================================================
+    // EMERGENCY MODE
+    //==========================================================
+
+    EMERGENCY:
+    begin
+
+        HVAC_cmd       = 16'd0;
+        Lighting_cmd   = 16'd0;
+        Comm_cmd       = 16'd20;
+        Propulsion_cmd = 16'd0;
+
+    end
+
+    //==========================================================
+
+    default:
+    begin
+
+        HVAC_cmd       = 16'd0;
+        Lighting_cmd   = 16'd0;
+        Comm_cmd       = 16'd0;
+        Propulsion_cmd = 16'd0;
+
+    end
+
+    endcase
+
+end
+
+endmodule
+
+
+
+//==============================================================
+// TESTBENCH
+//==============================================================
+
+module tb_hyperloop_energy_controller;
+
+//==============================================================
+// INPUTS
+//==============================================================
+
+reg clk;
+reg rst;
+
+reg [15:0] P_available;
+reg [15:0] P_required;
+
+//==============================================================
+// OUTPUTS
+//==============================================================
+
+wire [15:0] HVAC_cmd;
+wire [15:0] Lighting_cmd;
+wire [15:0] Comm_cmd;
+wire [15:0] Propulsion_cmd;
+
+//==============================================================
+// DUT INSTANTIATION
+//==============================================================
+
+hyperloop_energy_controller DUT (
+
+    .clk(clk),
+    .rst(rst),
+
+    .P_available(P_available),
+    .P_required(P_required),
+
+    .HVAC_cmd(HVAC_cmd),
+    .Lighting_cmd(Lighting_cmd),
+    .Comm_cmd(Comm_cmd),
+    .Propulsion_cmd(Propulsion_cmd)
+
+);
+
+//==============================================================
+// CLOCK GENERATION
+//==============================================================
+
+always #5 clk = ~clk;
+
+//==============================================================
+// TEST SEQUENCE
+//==============================================================
+
+initial
+begin
+
+    //----------------------------------------------------------
+    // INITIALIZATION
+    //----------------------------------------------------------
+
+    clk = 0;
+    rst = 1;
+
+    P_available = 16'd1700;
+    P_required  = 16'd1700;
+
+    //----------------------------------------------------------
+    // RESET
+    //----------------------------------------------------------
+
+    #20;
+    rst = 0;
+
+    //----------------------------------------------------------
+    // NORMAL OPERATION
+    //----------------------------------------------------------
+
+    #20;
+
+    //----------------------------------------------------------
+    // MILD DEFICIT
+    //----------------------------------------------------------
+
+    P_available = 16'd1500;
+
+    #40;
+
+    //----------------------------------------------------------
+    // SEVERE DEFICIT
+    //----------------------------------------------------------
+
+    P_available = 16'd1200;
+
+    #40;
+
+    //----------------------------------------------------------
+    // EMERGENCY
+    //----------------------------------------------------------
+
+    P_available = 16'd700;
+
+    #40;
+
+    //----------------------------------------------------------
+    // RECOVERY
+    //----------------------------------------------------------
+
+    P_available = 16'd1700;
+
+    #60;
+
+    //----------------------------------------------------------
+    // FINISH
+    //----------------------------------------------------------
+
+    $finish;
+
+end
+
+//==============================================================
+// MONITOR OUTPUTS
+//==============================================================
+
+initial
+begin
+
+    $monitor(
+        "TIME=%0t | P_av=%d | P_req=%d | HVAC=%d | LIGHT=%d | COMM=%d | PROP=%d",
+        $time,
+        P_available,
+        P_required,
+        HVAC_cmd,
+        Lighting_cmd,
+        Comm_cmd,
+        Propulsion_cmd
+    );
+
+end
+
+//==============================================================
+// VCD DUMP
+//==============================================================
+
+initial
+begin
+
+    $dumpfile("hyperloop_energy_controller.vcd");
+    $dumpvars(0, tb_hyperloop_energy_controller);
+end
+
+endmodule
